@@ -1,0 +1,266 @@
+-- ========================================================
+-- BUBLIK HUB v4.1 | Murder Mystery 2 (Ultimate Edition)
+-- ========================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+-- Загружаем UI библиотеку Rayfield
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+end)
+
+if not success or not Rayfield then
+    warn("Не удалось загрузить графический интерфейс Rayfield!")
+    return
+end
+
+local Window = Rayfield:CreateWindow({
+   Name = "Bublik Hub | MM2 Ultimate",
+   LoadingTitle = "Загрузка Bublik Hub...",
+   LoadingSubtitle = "by Side",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "BublikHubMM2",
+      FileName = "MainConfig"
+   },
+   KeySystem = false,
+})
+
+-- Создаем вкладки
+local FarmTab = Window:CreateTab("Авто-Фарм", 4483362458)
+local MainTab = Window:CreateTab("Главная", 4483362458)
+local VisualsTab = Window:CreateTab("ESP / Визуал", 4483362458)
+local TeleportTab = Window:CreateTab("Телепорты", 4483362458)
+local PlayerTab = Window:CreateTab("Игрок", 4483362458)
+local SettingsTab = Window:CreateTab("Настройки", 4483362458)
+
+-- Переменные состояния
+local farmSpeed = 0.5
+local selectedCase = "Mystery"
+
+-- ==================== 1. АВТО-ФАРМ И КЕЙСЫ ====================
+FarmTab:CreateSection("Настройка сбора валюты")
+
+FarmTab:CreateSlider({
+   Name = "Скорость фарма (Задержка)",
+   Range = {0.1, 2.0},
+   Increment = 0.1,
+   Suffix = "сек",
+   CurrentValue = 0.5,
+   Flag = "FarmSpeed",
+   Callback = function(Value)
+      farmSpeed = Value
+   end,
+})
+
+FarmTab:CreateToggle({
+   Name = "Авто-фарм валюты под картой + Авто-смерть",
+   CurrentValue = false,
+   Flag = "AutoCoinFarm",
+   Callback = function(Value)
+      task.spawn(function()
+         while Value do
+            pcall(function()
+               local character = LocalPlayer.Character
+               if character and character:FindFirstChild("HumanoidRootPart") then
+                  local hrp = character.HumanoidRootPart
+                  
+                  -- Ищем монеты на карте
+                  for _, folder in ipairs(workspace:GetChildren()) do
+                     if folder.Name == "CoinContainer" or folder.Name == "Coins" then
+                        for _, coin in ipairs(folder:GetChildren()) do
+                           if not Value then break end
+                           local part = coin:FindFirstChild("CoinVisual") or coin:FindFirstChild("Handle") or coin:FindFirstChildWhichIsA("BasePart")
+                           if part then
+                              -- Телепортируемся ПОД карту к монетке для безопасности
+                              hrp.CFrame = part.CFrame - Vector3.new(0, 7, 0)
+                              task.wait(farmSpeed)
+                           end
+                        end
+                     end
+                  end
+                  
+                  -- Авто-умирание после сбора для сброса цикла
+                  if character:FindFirstChild("Humanoid") then
+                     character.Humanoid.Health = 0
+                  end
+               end
+            end)
+            task.wait(1)
+         end
+      end)
+      Rayfield:Notify({Title = "Авто-Фарм", Content = "Статус: " .. tostring(Value), Duration = 3})
+   end,
+})
+
+FarmTab:CreateSection("Магазин кейсов")
+
+FarmTab:CreateDropdown({
+   Name = "Выбор кейса",
+   Options = {"Mystery", "Knife", "Gun", "Pet"},
+   CurrentOption = "Mystery",
+   Flag = "SelectedCase",
+   Callback = function(Option)
+      selectedCase = Option
+   end,
+})
+
+FarmTab:CreateButton({
+   Name = "Купить выбранный кейс",
+   Callback = function()
+      pcall(function()
+         local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+         if remotes and remotes:FindFirstChild("Shop") and remotes.Shop:FindFirstChild("BuyBox") then
+            remotes.Shop.BuyBox:InvokeServer(selectedCase)
+            Rayfield:Notify({Title = "Магазин", Content = "Покупка отправлена: " .. selectedCase, Duration = 3})
+         else
+            Rayfield:Notify({Title = "Магазин", Content = "Не удалось найти серверный путь магазина.", Duration = 3})
+         end
+      end)
+   end,
+})
+
+-- ==================== 2. ГЛАВНАЯ ====================
+MainTab:CreateSection("Авто-действия")
+
+MainTab:CreateToggle({
+   Name = "Авто-подбор упавшего пистолета",
+   CurrentValue = false,
+   Flag = "AutoGun",
+   Callback = function(Value)
+      task.spawn(function()
+          while Value do
+              pcall(function()
+                  for _, obj in ipairs(workspace:GetChildren()) do
+                      if obj.Name == "GunDrop" or (obj:FindFirstChild("Handle") and obj.Handle.BrickColor == BrickColor.new("Bright blue")) then
+                          LocalPlayer.Character.HumanoidRootPart.CFrame = obj.Handle.CFrame
+                      end
+                  end
+              end)
+              task.wait(0.5)
+          end
+      end)
+   end,
+})
+
+-- ==================== 3. ВИЗУАЛ / ESP ====================
+VisualsTab:CreateSection("Подсветка игроков")
+
+VisualsTab:CreateToggle({
+   Name = "ESP Ролей (Убийца / Шериф / Мирный)",
+   CurrentValue = false,
+   Flag = "RoleESP",
+   Callback = function(Value)
+      if Value then
+         for _, player in ipairs(Players:GetPlayers()) do
+             if player ~= LocalPlayer and player.Character then
+                 local highlight = Instance.new("Highlight")
+                 highlight.Name = "BublikESP"
+                 highlight.Adornee = player.Character
+                 highlight.Parent = player.Character
+                 
+                 local backpack = player.Backpack
+                 local char = player.Character
+                 if (backpack:FindFirstChild("Knife") or char:FindFirstChild("Knife")) then
+                     highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Убийца (Красный)
+                 elseif (backpack:FindFirstChild("Gun") or char:FindFirstChild("Gun")) then
+                     highlight.FillColor = Color3.fromRGB(0, 0, 255) -- Шериф (Синий)
+                 else
+                     highlight.FillColor = Color3.fromRGB(0, 255, 0) -- Мирный (Зеленый)
+                 end
+             end
+         end
+      else
+         for _, player in ipairs(Players:GetPlayers()) do
+             if player.Character and player.Character:FindFirstChild("BublikESP") then
+                 player.Character.BublikESP:Destroy()
+             end
+         end
+      end
+   end,
+})
+
+VisualsTab:CreateToggle({
+   Name = "Fullbright (Убрать темноту)",
+   CurrentValue = false,
+   Flag = "Fullbright",
+   Callback = function(Value)
+      if Value then
+         Lighting.Brightness = 2
+         Lighting.ClockTime = 14
+         Lighting.FogEnd = 100000
+      else
+         Lighting.Brightness = 1
+         Lighting.ClockTime = 0
+      end
+   end,
+})
+
+-- ==================== 4. ТЕЛЕПОРТЫ ====================
+TeleportTab:CreateSection("Быстрое перемещение")
+
+TeleportTab:CreateButton({
+   Name = "Телепорт к Убийце",
+   Callback = function()
+      pcall(function()
+          for _, p in ipairs(Players:GetPlayers()) do
+              if p ~= LocalPlayer and (p.Backpack:FindFirstChild("Knife") or (p.Character and p.Character:FindFirstChild("Knife"))) then
+                  LocalPlayer.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame
+                  return
+              end
+          end
+      end)
+   end,
+})
+
+TeleportTab:CreateButton({
+   Name = "Телепорт к Шерифу",
+   Callback = function()
+      pcall(function()
+          for _, p in ipairs(Players:GetPlayers()) do
+              if p ~= LocalPlayer and (p.Backpack:FindFirstChild("Gun") or (p.Character and p.Character:FindFirstChild("Gun"))) then
+                  LocalPlayer.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame
+                  return
+              end
+          end
+      end)
+   end,
+})
+
+-- ==================== 5. ИГРОК ====================
+PlayerTab:CreateSection("Физика")
+
+PlayerTab:CreateSlider({
+   Name = "Скорость бега (WalkSpeed)",
+   Range = {16, 150},
+   Increment = 1,
+   Suffix = "spd",
+   CurrentValue = 16,
+   Flag = "PlayerSpeed",
+   Callback = function(Value)
+      pcall(function()
+         LocalPlayer.Character.Humanoid.WalkSpeed = Value
+      end)
+   end,
+})
+
+PlayerTab:CreateSlider({
+   Name = "Сила прыжка (JumpPower)",
+   Range = {50, 300},
+   Increment = 5,
+   Suffix = "power",
+   CurrentValue = 50,
+   Flag = "PlayerJump",
+   Callback = function(Value)
+      pcall(function()
+         LocalPlayer.Character.Humanoid.JumpPower = Value
+      end)
+   end,
+})
+
+PlayerTab:CreateButton({
